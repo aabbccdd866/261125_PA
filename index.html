@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>연말 파티 보드</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; background: #f5f5f5; }
+    #sidebar { width: 84px; background: #333; color: white; display: flex; flex-direction: column; align-items: center; padding-top: 20px; flex-shrink: 0; }
+    .menu-btn { background: none; border: none; color: #aaa; padding: 15px 5px; font-size: 12px; width: 100%; cursor: pointer; }
+    .menu-btn.active { color: white; font-weight: bold; background: #444; }
+    #main-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #topbar { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .badge { background: #eef4ff; color: #1d4ed8; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: bold; }
+    .small-btn { width: auto; padding: 6px 10px; font-size: 12px; margin: 0; cursor: pointer; border-radius: 6px; border: 1px solid #ccc; background: #fafafa; }
+    #content { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+    .page { display: none; }
+    .page.active { display: block; }
+    input, button, select { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; border-radius: 6px; border: 1px solid #ccc; }
+    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    ul { list-style: none; padding: 0; }
+    li { background: white; padding: 10px 12px; margin: 6px 0; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .score-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .score-nick { color: #4b5563; font-weight: bold; font-size: 14px; white-space: nowrap; }
+    .card { background: white; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin: 10px 0; }
+    .team-box { border-left: 4px solid #2563eb; padding-left: 10px; margin: 8px 0; }
+    .team-box.my-team { border-left-color: #16a34a; background: #f0fdf4; padding: 10px; border-radius: 6px; }
+    .online-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { background: #f3f4f6; padding: 4px 10px; border-radius: 999px; font-size: 12px; }
+
+    /* 닉네임 설정 모달 */
+    #nickname-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+    }
+    #nickname-modal.show { display: flex; }
+    .modal-box { background: white; padding: 24px; border-radius: 10px; width: 100%; max-width: 360px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+  </style>
+</head>
+<body>
+
+  <!-- 처음 접속 시 닉네임 설정 모달 -->
+  <div id="nickname-modal">
+    <div class="modal-box">
+      <h3 style="margin-top:0;">🎉 환영합니다! 닉네임 설정</h3>
+      <p style="font-size:13px; color:#555;">스코어 보드, 팀 매치, 투표 및 접속자 목록에 표시될 닉네임을 입력해주세요.</p>
+      <input type="text" id="nickname-input" maxlength="16" placeholder="예: 홍길동 (최대 16자)">
+      <button id="btn-save-nickname">시작하기</button>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <button class="menu-btn active" onclick="showPage('score-page', this)">스코어 보드</button>
+    <button class="menu-btn" onclick="showPage('team-page', this)">팀 매치</button>
+    <button class="menu-btn" onclick="showPage('vote-page', this)">투표</button>
+  </div>
+
+  <div id="main-wrap">
+    <!-- 상단 바: 내 닉네임 & 현재 접속자 요약 -->
+    <div id="topbar">
+      <div>
+        <span class="badge">내 닉네임: <span id="my-nickname-display">설정 중...</span></span>
+        <button class="small-btn" id="btn-edit-nickname">닉네임 변경</button>
+      </div>
+      <div>
+        <span class="badge" id="online-count-badge">현재 접속자: 0명</span>
+      </div>
+    </div>
+
+    <div id="content">
+      <!-- 현재 접속자 목록 카드 -->
+      <div class="card">
+        <strong>🟢 현재 접속자</strong>
+        <div id="online-users-list" class="online-chips"></div>
+      </div>
+
+      <!-- 1) 스코어 보드 -->
+      <div id="score-page" class="page active">
+        <h2>🎤 스코어 보드</h2>
+        <input type="text" id="song-title" placeholder="곡 제목">
+        <input type="number" id="song-score" placeholder="점수">
+        <button id="btn-add-score">등록</button>
+        <ul id="score-list"></ul>
+      </div>
+
+      <!-- 2) 팀 매치 보드 -->
+      <div id="team-page" class="page">
+        <h2>👥 팀 매치 보드</h2>
+        <label>팀 수 설정 (3~5):</label>
+        <select id="team-count-select">
+          <option value="3">3팀</option>
+          <option value="4">4팀</option>
+          <option value="5">5팀</option>
+        </select>
+        <button id="btn-join-team">랜덤 팀 배정</button>
+        <p id="my-team-info" style="font-weight: bold;"></p>
+
+        <!-- 자기 팀 / 상대 팀 구성원 표시 영역 -->
+        <div id="team-members-board" class="card">
+          <strong>📋 팀별 구성원 현황</strong>
+          <div id="my-team-members" style="margin-top:8px;"></div>
+          <div id="enemy-team-members" style="margin-top:8px;"></div>
+        </div>
+
+        <input type="number" id="team-score-input" placeholder="팀 라운드 점수">
+        <button id="btn-add-team-score">팀 점수 등록</button>
+        <ul id="team-list"></ul>
+      </div>
+
+      <!-- 3) 인기 투표 보드 -->
+      <div id="vote-page" class="page">
+        <h2>🗳️ 실시간 인기 투표</h2>
+        <button id="btn-start-vote">투표 시작하기</button>
+        <div id="vote-section" style="display:none; margin-top:10px;">
+          <select id="vote-select"></select>
+          <button id="btn-submit-vote">투표하기</button>
+        </div>
+        <div id="vote-status-summary" class="card" style="font-weight:bold;"></div>
+        <div id="vote-result" class="card"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js';
+    import {
+      getFirestore, collection, addDoc, setDoc, doc, onSnapshot,
+      query, orderBy, getDocs, increment, serverTimestamp
+    } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBs0LivWdGhX3rJIAlOs-7BjnrCgUmoUHU",
+      authDomain: "project-388564803515662180.firebaseapp.com",
+      projectId: "project-388564803515662180",
+      storageBucket: "project-388564803515662180.firebasestorage.app",
+      messagingSenderId: "191153041300",
+      appId: "1:191153041300:web:29539241a9d0f6570f2981",
+      measurementId: "G-8BP7T2BZCG"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let currentUser = null;
+    let myNickname = '';
+    let myTeam = null;
+    let allUsers = [];
+    let allVotes = [];
+
+    const nicknameModal = document.getElementById('nickname-modal');
+    const nicknameInput = document.getElementById('nickname-input');
+    const myNicknameDisplay = document.getElementById('my-nickname-display');
+
+    function openNicknameModal(prefill = '') {
+      nicknameInput.value = prefill;
+      nicknameModal.classList.add('show');
+      setTimeout(() => nicknameInput.focus(), 50);
+    }
+
+    function closeNicknameModal() {
+      nicknameModal.classList.remove('show');
+    }
+
+    async function setUserOnlineStatus(isOnline) {
+      if (!currentUser) return;
+      await setDoc(
+        doc(db, 'users', currentUser.uid),
+        {
+          online: isOnline,
+          lastSeen: serverTimestamp()
+        },
+        { merge: true }
+      );
+    }
+
+    // 1. 익명 로그인 및 사용자 프로필/접속 상태 초기화
+    signInAnonymously(auth).catch(console.error);
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+      currentUser = user;
+
+      const userRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userRef, { online: true, lastSeen: serverTimestamp() }, { merge: true });
+
+      // 기존 닉네임/팀 정보 확인
+      onSnapshot(userRef, (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.nickname) {
+          myNickname = data.nickname;
+          myNicknameDisplay.innerText = myNickname;
+        } else {
+          myNicknameDisplay.innerText = '미설정';
+          openNicknameModal('');
+        }
+        if (data.team) {
+          myTeam = Number(data.team);
+          document.getElementById('my-team-info').innerText = `당신의 소속: ${myTeam}팀`;
+          renderTeamMembers();
+        }
+      });
+    });
+
+    document.getElementById('btn-save-nickname').onclick = async () => {
+      const nick = nicknameInput.value.trim();
+      if (!nick) return alert('닉네임을 입력해주세요!');
+      if (!currentUser) return alert('로그인 중입니다. 잠시 후 다시 시도해주세요.');
+
+      await setDoc(
+        doc(db, 'users', currentUser.uid),
+        { nickname: nick, online: true, lastSeen: serverTimestamp() },
+        { merge: true }
+      );
+      myNickname = nick;
+      myNicknameDisplay.innerText = myNickname;
+      closeNicknameModal();
+      renderTeamMembers();
+      renderOnlineUsers();
+    };
+
+    document.getElementById('btn-edit-nickname').onclick = () => {
+      openNicknameModal(myNickname);
+    };
+
+    // 페이지 종료/숨김 시 접속 상태 업데이트
+    window.addEventListener('pagehide', () => {
+      setUserOnlineStatus(false);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        setUserOnlineStatus(true);
+      }
+    });
+
+    // 페이지 전환 함수
+    window.showPage = function(pageId, btnEl) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      if (btnEl) btnEl.classList.add('active');
+    };
+
+    // --- 6) 현재 접속자 & 4) 팀 구성원 렌더링 ---
+    function renderOnlineUsers() {
+      const onlineUsers = allUsers.filter(u => u.online);
+      document.getElementById('online-count-badge').innerText = `현재 접속자: ${onlineUsers.length}명`;
+
+      const listEl = document.getElementById('online-users-list');
+      if (onlineUsers.length === 0) {
+        listEl.innerHTML = '<span class="chip">접속 중인 사용자가 없습니다.</span>';
+        return;
+      }
+
+      listEl.innerHTML = onlineUsers
+        .map(u => {
+          const name = u.nickname || `익명(${u.id.slice(0, 4)})`;
+          const meTag = currentUser && u.id === currentUser.uid ? ' (나)' : '';
+          const teamTag = u.team ? ` · ${u.team}팀` : '';
+          return `<span class="chip">${name}${meTag}${teamTag}</span>`;
+        })
+        .join('');
+    }
+
+    function renderTeamMembers() {
+      const myTeamBox = document.getElementById('my-team-members');
+      const enemyTeamBox = document.getElementById('enemy-team-members');
+
+      const assignedUsers = allUsers.filter(u => u.team);
+      if (assignedUsers.length === 0) {
+        myTeamBox.innerHTML = '<div class="team-box">아직 팀이 배정된 인원이 없습니다.</div>';
+        enemyTeamBox.innerHTML = '';
+        return;
+      }
+
+      const grouped = {};
+      assignedUsers.forEach(u => {
+        const t = Number(u.team);
+        if (!grouped[t]) grouped[t] = [];
+        grouped[t].push(u.nickname || `익명(${u.id.slice(0, 4)})`);
+      });
+
+      if (myTeam) {
+        const myMembers = grouped[myTeam] || [];
+        myTeamBox.innerHTML = `
+          <div class="team-box my-team">
+            <strong>🟢 내 팀 (${myTeam}팀) - ${myMembers.length}명</strong>
+            <div>${myMembers.length ? myMembers.join(', ') : '없음'}</div>
+          </div>
+        `;
+      } else {
+        myTeamBox.innerHTML = `
+          <div class="team-box">
+            <strong>내 팀:</strong> 아직 배정되지 않았습니다.
+          </div>
+        `;
+      }
+
+      const enemyTeams = Object.keys(grouped)
+        .map(Number)
+        .filter(t => t !== myTeam)
+        .sort((a, b) => a - b);
+
+      if (enemyTeams.length === 0) {
+        enemyTeamBox.innerHTML = '<div class="team-box">상대 팀 구성원이 아직 없습니다.</div>';
+      } else {
+        enemyTeamBox.innerHTML = enemyTeams
+          .map(t => `
+            <div class="team-box">
+              <strong>⚔️ 상대 팀 (${t}팀) - ${grouped[t].length}명</strong>
+              <div>${grouped[t].join(', ')}</div>
+            </div>
+          `)
+          .join('');
+      }
+    }
+
+    onSnapshot(collection(db, 'users'), (snapshot) => {
+      allUsers = [];
+      snapshot.forEach(docSnap => {
+        allUsers.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      renderOnlineUsers();
+      renderTeamMembers();
+      evaluateVoteResults();
+    });
+
+    // --- (1) 스코어 보드 기능 (닉네임 오른편 표기) ---
+    const scoreList = document.getElementById('score-list');
+    const voteSelect = document.getElementById('vote-select');
+
+    onSnapshot(query(collection(db, 'scores'), orderBy('score', 'desc')), snapshot => {
+      scoreList.innerHTML = '';
+      voteSelect.innerHTML = '<option value="">선택하세요</option>';
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const nick = data.nickname || '익명';
+        scoreList.innerHTML += `
+          <li class="score-item">
+            <span><strong>${data.song}</strong> - ${data.score}점</span>
+            <span class="score-nick">${nick}</span>
+          </li>
+        `;
+        voteSelect.innerHTML += `<option value="${docSnap.id}">${data.song} (${nick})</option>`;
+      });
+    });
+
+    document.getElementById('btn-add-score').onclick = async () => {
+      if (!myNickname) {
+        openNicknameModal('');
+        return alert('먼저 닉네임을 설정해주세요!');
+      }
+      const song = document.getElementById('song-title').value.trim();
+      const score = Number(document.getElementById('song-score').value);
+      if (!song || !score) return alert('곡 제목과 점수를 입력해주세요!');
+
+      await addDoc(collection(db, 'scores'), {
+        song,
+        score,
+        nickname: myNickname,
+        userId: currentUser.uid,
+        createdAt: serverTimestamp()
+      });
+      document.getElementById('song-title').value = '';
+      document.getElementById('song-score').value = '';
+    };
+
+    // --- (2) 팀 매치 기능 ---
+    document.getElementById('btn-join-team').onclick = async () => {
+      if (!currentUser) return;
+      if (!myNickname) {
+        openNicknameModal('');
+        return alert('먼저 닉네임을 설정해주세요!');
+      }
+      const teamCount = Number(document.getElementById('team-count-select').value);
+      myTeam = Math.floor(Math.random() * teamCount) + 1;
+      document.getElementById('my-team-info').innerText = `당신의 소속: ${myTeam}팀`;
+
+      await setDoc(
+        doc(db, 'users', currentUser.uid),
+        { team: myTeam, nickname: myNickname, online: true },
+        { merge: true }
+      );
+    };
+
+    document.getElementById('btn-add-team-score').onclick = async () => {
+      const score = Number(document.getElementById('team-score-input').value);
+      if (!myTeam) return alert('먼저 팀을 배정받으세요!');
+      if (!score) return alert('점수를 입력하세요!');
+      await setDoc(doc(db, 'team_scores', `team_${myTeam}`), { score: increment(score) }, { merge: true });
+      document.getElementById('team-score-input').value = '';
+    };
+
+    onSnapshot(collection(db, 'team_scores'), snapshot => {
+      const teamList = document.getElementById('team-list');
+      teamList.innerHTML = '';
+      snapshot.forEach(docSnap => {
+        teamList.innerHTML += `<li>${docSnap.id.replace('team_', '')}팀 합산 점수: ${docSnap.data().score || 0}점</li>`;
+      });
+    });
+
+    // --- (3) 인기 투표 기능 (전원 투표 완료 시에만 등수 표시) ---
+    const voteSec = document.getElementById('vote-section');
+    const voteRes = document.getElementById('vote-result');
+    const voteStatusSummary = document.getElementById('vote-status-summary');
+
+    document.getElementById('btn-start-vote').onclick = async () => {
+      await setDoc(doc(db, 'system', 'vote_status'), { active: true });
+    };
+
+    onSnapshot(doc(db, 'system', 'vote_status'), docSnap => {
+      if (docSnap.exists() && docSnap.data().active) {
+        voteSec.style.display = 'block';
+      }
+    });
+
+    document.getElementById('btn-submit-vote').onclick = async () => {
+      if (!currentUser) return;
+      if (!myNickname) {
+        openNicknameModal('');
+        return alert('먼저 닉네임을 설정해주세요!');
+      }
+      const selectedId = voteSelect.value;
+      if (!selectedId) return alert('곡을 선택하세요!');
+
+      await setDoc(doc(db, 'votes', currentUser.uid), {
+        songId: selectedId,
+        nickname: myNickname,
+        votedAt: serverTimestamp()
+      });
+      alert('투표 완료! 전원 투표가 끝나면 등수가 공개됩니다.');
+      voteSec.style.display = 'none';
+    };
+
+    async function evaluateVoteResults() {
+      const onlineUsers = allUsers.filter(u => u.online);
+      const totalParticipants = onlineUsers.length;
+      const votedCount = allVotes.length;
+
+      voteStatusSummary.innerText = `투표 현황: ${votedCount} / ${totalParticipants}명 완료`;
+
+      // 접속 인원이 1명 이상이고, 현재 접속자 전원이 투표했을 때만 등수 표시
+      if (totalParticipants === 0 || votedCount < totalParticipants) {
+        voteRes.innerHTML = `<p style="color:#6b7280; margin:0;">⏳ 전원 투표가 완료되어야 등수가 표시됩니다.</p>`;
+        return;
+      }
+
+      const voteCounts = {};
+      allVotes.forEach(v => {
+        if (v.songId) {
+          voteCounts[v.songId] = (voteCounts[v.songId] || 0) + 1;
+        }
+      });
+
+      const songsSnap = await getDocs(collection(db, 'scores'));
+      const songMap = {};
+      songsSnap.forEach(s => {
+        const d = s.data();
+        songMap[s.id] = `${d.song} (${d.nickname || '익명'})`;
+      });
+
+      const ranking = Object.entries(voteCounts)
+        .map(([songId, count]) => ({
+          songId,
+          label: songMap[songId] || '알 수 없는 곡',
+          count
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      if (ranking.length === 0) {
+        voteRes.innerHTML = '<p style="margin:0;">집계된 투표 데이터가 없습니다.</p>';
+        return;
+      }
+
+      const rankHtml = ranking
+        .map((item, idx) => {
+          const medal = idx === 0 ? '🏆 ' : `${idx + 1}등 · `;
+          return `<li><strong>${medal}${item.label}</strong> — ${item.count}표</li>`;
+        })
+        .join('');
+
+      voteRes.innerHTML = `
+        <h3 style="margin-top:0;">🎉 전원 투표 완료! 최종 등수</h3>
+        <ul style="margin-bottom:0;">${rankHtml}</ul>
+      `;
+    }
+
+    onSnapshot(collection(db, 'votes'), (snapshot) => {
+      allVotes = [];
+      snapshot.forEach(docSnap => {
+        allVotes.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      evaluateVoteResults();
+    });
+  </script>
+</body>
+</html>
